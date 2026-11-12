@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fretboard Chord Explorer</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eceeec;--fg:#1b1f1e;--muted:#5d6764;--panel:#fff;--line:#cfd5d2;--root:#e69a14;--tone:#1f9d8a;color-scheme:light;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141716;--fg:#e8ecea;--muted:#9aa5a1;--panel:#1d2120;--line:#2d3432;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#141716;--fg:#e8ecea;--muted:#9aa5a1;--panel:#1d2120;--line:#2d3432;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.45}
+main{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:1.5rem;font-weight:800;margin:0 0 14px;letter-spacing:-.01em}
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:16px}
+label{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--muted)}
+select,button{font:inherit;color:var(--fg)}
+select{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 12px;font-size:1rem;min-width:110px}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}
+.seg button{border:0;background:none;padding:9px 12px;cursor:pointer;font-size:.95rem}
+.seg button[aria-pressed="true"]{background:var(--tone);color:#fff}
+.chk{flex-direction:row;align-items:center;gap:8px;font-size:.9rem;color:var(--fg);padding-bottom:9px}
+:focus-visible{outline:3px solid var(--root);outline-offset:2px}
+.readout{margin:4px 0 12px}
+.readout h2{margin:0;font-size:1.6rem;font-weight:800}
+.readout p{margin:2px 0 0;color:var(--muted)}
+.board{overflow-x:auto;border-radius:10px;background:#2b1e18;padding:6px 0;-webkit-overflow-scrolling:touch}
+.board svg{display:block}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin:10px 0 22px;font-size:.85rem;color:var(--muted)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+h3{font-size:1.05rem;margin:0 0 8px}
+.vhead{display:flex;flex-wrap:wrap;gap:12px;align-items:end;justify-content:space-between;margin-bottom:8px}
+.chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px;max-height:340px;overflow-y:auto;padding:2px}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer;text-align:left;font-variant-numeric:tabular-nums}
+.chip b{display:block;font-size:1.05rem;letter-spacing:.04em}
+.chip span{font-size:.75rem;color:var(--muted)}
+.chip[aria-pressed="true"]{border-color:var(--root);box-shadow:0 0 0 2px var(--root)}
+.empty{color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+<h1>Fretboard Chord Explorer</h1>
+<div class="controls">
+  <label>Root<select id="root"></select></label>
+  <label>Chord<select id="qual"></select></label>
+  <label>Labels<div class="seg"><button id="bName" aria-pressed="true">Notes</button><button id="bInt" aria-pressed="false">Intervals</button></div></label>
+  <label>Strings in voicing<select id="minS"><option value="4">4 or more</option><option value="5">5 or more</option><option value="6">All 6</option></select></label>
+  <label class="chk"><input type="checkbox" id="others" checked>Show other notes</label>
+</div>
+<div class="readout"><h2 id="title"></h2><p id="tones"></p></div>
+<div class="board" id="board" tabindex="0" aria-label="Fretboard, scrolls sideways"></div>
+<div class="legend"><span><i style="background:var(--root)"></i>Root</span><span><i style="background:var(--tone)"></i>Chord tone</span><span><i style="background:#e0614d"></i>Muted string</span><span>Scroll sideways for frets 13 to 24</span></div>
+<section>
+  <div class="vhead"><h3 id="vtitle">Voicings</h3><button class="chip" id="clear">Show all positions</button></div>
+  <div class="chips" id="chips"></div>
+</section>
+</main>
+<script>
+const OPEN=[4,9,2,7,11,4];
+const SH=['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+const FL=['C','D♭','D','E♭','E','F','G♭','G','A♭','A','B♭','B'];
+const ROOTS=[[9,'A'],[10,'A♯ / B♭'],[11,'B'],[0,'C'],[1,'C♯ / D♭'],[2,'D'],[3,'D♯ / E♭'],[4,'E'],[5,'F'],[6,'F♯ / G♭'],[7,'G'],[8,'G♯ / A♭']];
+const CH=[
+ ['major','',[0,4,7],['R','3','5']],
+ ['minor','m',[0,3,7],['R','♭3','5']],
+ ['sus2','sus2',[0,2,7],['R','2','5']],
+ ['sus4','sus4',[0,5,7],['R','4','5']],
+ ['7','7',[0,4,7,10],['R','3','5','♭7']],
+ ['maj7','maj7',[0,4,7,11],['R','3','5','7']],
+ ['m7','m7',[0,3,7,10],['R','♭3','5','♭7']],
+ ['7sus4','7sus4',[0,5,7,10],['R','4','5','♭7']],
+ ['6','6',[0,4,7,9],['R','3','5','6']],
+ ['m6','m6',[0,3,7,9],['R','♭3','5','6']],
+ ['add9','add9',[0,2,4,7],['R','9','3','5']],
+ ['9','9',[0,2,4,7,10],['R','9','3','5','♭7']],
+ ['maj9','maj9',[0,2,4,7,11],['R','9','3','5','7']],
+ ['m9','m9',[0,2,3,7,10],['R','9','♭3','5','♭7']],
+ ['diminished','dim',[0,3,6],['R','♭3','♭5']],
+ ['diminished 7','dim7',[0,3,6,9],['R','♭3','♭5','♭♭7']],
+ ['half-diminished (m7♭5)','m7♭5',[0,3,6,10],['R','♭3','♭5','♭7']],
+ ['augmented','aug',[0,4,8],['R','3','♯5']]
+];
+const $=id=>document.getElementById(id);
+const rootSel=$('root'),qSel=$('qual');
+rootSel.add(new Option('Pick a root',''));
+qSel.add(new Option('Pick a chord',''));
+ROOTS.forEach(([v,n])=>rootSel.add(new Option(n,v)));
+CH.forEach((c,i)=>qSel.add(new Option(c[0],i)));
+let mode='name',voicings=[],cur=null;
+const hasPick=()=>rootSel.value!==''&&qSel.value!=='';
+
+const FW=54,NUTX=46,TOP=34,GAP=30,OX=22,W=NUTX+24*FW+20,H=TOP+5*GAP+52;
+const fx=f=>f===0?OX:NUTX+(f-.5)*FW, sy=s=>TOP+(5-s)*GAP;
+
+function findVoicings(r,c,minS){
+  const pcs=new Set(c[2].map(v=>(v+r)%12));
+  let req=new Set(pcs);
+  if(c[2].length>=4&&c[2].includes(7)) req.delete((7+r)%12);
+  const out=[];
+  for(let m=0;m<=21;m++){
+    const opts=OPEN.map(o=>{
+      const a=[null];
+      if(m<=3&&pcs.has(o)) a.push(0);
+      for(let f=Math.max(m,1);f<=Math.min(m+3,24);f++) if(m>0&&pcs.has((o+f)%12)) a.push(f);
+      return a;
+    });
+    const cur=[];
+    (function rec(s){
+      if(s===6){
+        const idx=cur.map((f,i)=>f===null?-1:i).filter(i=>i>=0);
+        if(idx.length<minS) return;
+        for(let k=1;k<idx.length;k++) if(idx[k]!==idx[k-1]+1) return;
+        const fr=cur.filter(f=>f>0);
+        if((fr.length?Math.min(...fr):0)!==m) return;
+        const have=new Set(idx.map(i=>(OPEN[i]+cur[i])%12));
+        for(const p of req) if(!have.has(p)) return;
+        out.push({frets:cur.slice(),m,n:idx.length,full:[...pcs].every(p=>have.has(p))});
+        return;
+      }
+      for(const f of opts[s]){cur[s]=f;rec(s+1);}
+      cur.length=s;
+    })(0);
+  }
+  out.sort((a,b)=>a.m-b.m||b.n-a.n||(b.full-a.full));
+  return out.slice(0,150);
+}
+
+function render(){
+  const none=!hasPick();
+  const r=none?0:+rootSel.value,c=none?null:CH[+qSel.value],N=[1,3,5,8,10].includes(r)?FL:SH;
+  const lab=new Map(none?[]:c[2].map((v,i)=>[(v+r)%12,c[3][i]]));
+  const showOthers=$('others').checked;
+  let s=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Guitar fretboard with 24 frets">`;
+  s+=`<rect x="${NUTX}" y="${TOP-16}" width="${24*FW}" height="${5*GAP+32}" fill="#3a2a21" rx="3"/>`;
+  [3,5,7,9,15,17,19,21].forEach(f=>s+=`<circle cx="${fx(f)}" cy="${TOP+2.5*GAP}" r="6" fill="#fff" opacity=".09"/>`);
+  [12,24].forEach(f=>{s+=`<circle cx="${fx(f)}" cy="${TOP+1.5*GAP}" r="6" fill="#fff" opacity=".09"/><circle cx="${fx(f)}" cy="${TOP+3.5*GAP}" r="6" fill="#fff" opacity=".09"/>`});
+  for(let f=0;f<=24;f++) s+=`<line x1="${NUTX+f*FW}" x2="${NUTX+f*FW}" y1="${TOP-16}" y2="${TOP+5*GAP+16}" stroke="${f?'#b9b4a6':'#e9e4d2'}" stroke-width="${f?2:5}"/>`;
+  for(let i=0;i<6;i++) s+=`<line x1="${NUTX-6}" x2="${NUTX+24*FW}" y1="${sy(i)}" y2="${sy(i)}" stroke="#cfc9b8" stroke-width="${(1+(5-i)*.35).toFixed(2)}" opacity=".75"/>`;
+  for(let f=0;f<=24;f++) if(f===0||[3,5,7,9,12,15,17,19,21,24].includes(f)) s+=`<text x="${fx(f)}" y="${TOP+5*GAP+40}" text-anchor="middle" font-size="12" fill="#b9b1a0">${f===0?'open':f}</text>`;
+  const v=cur;
+  for(let i=0;i<6;i++){
+    if(v&&v.frets[i]===null) s+=`<text x="${OX}" y="${sy(i)+5}" text-anchor="middle" font-size="16" font-weight="800" fill="#e0614d">×</text>`;
+    for(let f=0;f<=24;f++){
+      const pc=(OPEN[i]+f)%12,inC=lab.has(pc),isR=!none&&pc===r;
+      const active=none?true:(v?v.frets[i]===f:inC);
+      if(!active&&!showOthers) continue;
+      if(!active&&v&&f===0&&v.frets[i]===null) continue;
+      const x=fx(f),y=sy(i);
+      const text=(mode==='name'||none)?N[pc]:(inC?lab.get(pc):'');
+      if(active){
+        s+=`<circle cx="${x}" cy="${y}" r="12" fill="${none?'#5a4639':isR?'var(--root)':'var(--tone)'}" stroke="#fff" stroke-opacity=".55" stroke-width="1.5"/>`;
+        s+=`<text x="${x}" y="${y+4}" text-anchor="middle" font-size="11" font-weight="800" fill="${isR?'#241500':'#fff'}">${text}</text>`;
+      }else{
+        const faint=v?.14:.3;
+        s+=`<circle cx="${x}" cy="${y}" r="11" fill="#3a2a21" stroke="#fff" stroke-opacity="${faint}"/>`;
+        if(text) s+=`<text x="${x}" y="${y+4}" text-anchor="middle" font-size="10" fill="#fff" fill-opacity="${v?.28:.5}">${text}</text>`;
+      }
+    }
+  }
+  s+='</svg>';
+  $('board').innerHTML=s;
+  if(none){$('title').textContent='All notes';$('tones').textContent='Pick a root and a chord to highlight it and see voicings.';return;}
+  $('title').textContent=`${N[r]} ${c[0]}`;
+  const tones=c[2].map(x=>N[(x+r)%12]).join(', ');
+  $('tones').textContent=v?`Voicing ${fmt(v)} on frets ${v.m===0?'0 to 3':v.m+' to '+(v.m+3)}. Chord tones: ${tones}`:`Chord tones: ${tones}`;
+}
+const fmt=v=>{const big=v.frets.some(f=>f>=10);return v.frets.map(f=>f===null?'x':f).join(big?' ':'')};
+
+function update(resetV){
+  if(resetV) cur=null;
+  if(!hasPick()){voicings=[];$('vtitle').textContent='Voicings';$('chips').innerHTML='<p class="empty">Pick a root and a chord to list voicings.</p>';render();return;}
+  const r=+rootSel.value,c=CH[+qSel.value];
+  voicings=findVoicings(r,c,+$('minS').value);
+  $('vtitle').textContent=`Voicings (${voicings.length}${voicings.length>=150?'+':''}), lowest string first`;
+  const box=$('chips');box.innerHTML='';
+  if(!voicings.length) box.innerHTML='<p class="empty">No playable voicing with this many strings. Try 4 or more.</p>';
+  voicings.forEach(v=>{
+    const b=document.createElement('button');b.className='chip';
+    b.innerHTML=`<b>${fmt(v)}</b><span>${v.m===0?'open position':'fret '+v.m}${v.full?'':', no 5th'}</span>`;
+    b.setAttribute('aria-pressed',cur===v?'true':'false');
+    b.onclick=()=>{cur=v;render();[...box.children].forEach(x=>x.setAttribute('aria-pressed','false'));b.setAttribute('aria-pressed','true');
+      $('board').scrollTo({left:Math.max(0,fx(Math.max(v.m,1))-60),behavior:'smooth'});};
+    box.appendChild(b);
+  });
+  render();
+}
+rootSel.onchange=qSel.onchange=()=>update(true);
+$('minS').onchange=()=>update(true);
+$('others').onchange=render;
+$('clear').onclick=()=>{cur=null;update(false);$('board').scrollTo({left:0,behavior:'smooth'})};
+$('bName').onclick=()=>{mode='name';$('bName').setAttribute('aria-pressed','true');$('bInt').setAttribute('aria-pressed','false');render()};
+$('bInt').onclick=()=>{mode='int';$('bInt').setAttribute('aria-pressed','true');$('bName').setAttribute('aria-pressed','false');render()};
+update(true);
+</script>
+</body>
+</html>
